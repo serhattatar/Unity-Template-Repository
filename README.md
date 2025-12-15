@@ -21,27 +21,23 @@ A **production‑ready Unity 6 template** built for
 
 **Clean Architecture + Bootstrap Pattern + Zero Singletons.**
 
-Author: **Muhammet Serhat Tatar (M.S.T.)**
+**Author:** Muhammet Serhat Tatar (M.S.T.)  
+**Repository:** [serhattatar/Unity-Template-Repository](https://github.com/serhattatar/Unity-Template-Repository)
 
 ---
 
 # 🏗️ Architecture Diagram
 
-```
-[ Bootstrap Scene ]
-        │
-        ▼
-┌─────────────────────────────┐
-│         AppStartup          │
-└─────────────────────────────┘
-        │ Instantiates
-        ▼
- ┌──────────────┬───────────────┬──────────────┐
- │ PoolManager  │ SaveManager    │ AudioManager │
- └──────────────┴───────────────┴──────────────┘
-        │
-        ▼
-   [ Game Scene ]
+```mermaid
+graph TD
+    A[Bootstrap Scene] -->|AppStartup| B(Initialize Services)
+    B --> C{Managers DDOL}
+    C -->|Persist| D[PoolManager]
+    C -->|Persist| E[SaveManager]
+    C -->|Persist| F[AudioManager]
+    C -->|Persist| G[InputManager]
+    C -->|Load Game| H[Game Scene]
+    H -->|Local Logic| I[UIManager]
 ```
 
 ---
@@ -49,54 +45,34 @@ Author: **Muhammet Serhat Tatar (M.S.T.)**
 # 🔄 Lifecycle
 
 1. **Bootstrap Scene (Index 0)** loads first  
-2. `AppStartup` initializes:
+2. `AppStartup` initializes persistent services:
    - `PoolManager`
    - `SaveManager`
    - `AudioManager`
+   - `InputManager`
 3. Auto‑loads **GameScene**
 
-⚠️ Managers **must NOT** exist inside gameplay scenes.
+⚠️ Managers **must NOT** exist manually inside gameplay scenes.
 
 ---
 
 # ✨ Key Systems
 
----
-
 ## 🎱 Zero‑Allocation Object Pooling
-
 Wrapper over `UnityEngine.Pool`.
 
-### Benefits
-- Zero‑GC
-- Instant spawn/despawn
-- Prewarm support
-
-### Configure
-```
-_Project/Prefabs/Managers/PoolManager_Prefab
-```
-
-### Spawn Example
+**Spawn:**
 ```csharp
-[SerializeField] private GameObject _bulletPrefab;
-
-public void Fire()
-{
-    _bulletPrefab.Spawn(transform.position, transform.rotation);
-}
+_bulletPrefab.Spawn(transform.position, rotation);
 ```
-
-### Return Example
+**Return:**
 ```csharp
-private void OnEnable() => gameObject.ReturnToPool(3f);
-private void OnCollisionEnter(Collision col) => gameObject.ReturnToPool();
+gameObject.ReturnToPool(3f); // Auto-despawn after 3s
 ```
 
 ---
 
 ## 💾 Secure Save System
-
 - JSON (XOR encrypted)
 - Auto‑save on pause & quit
 - Main entry: `SaveManager.Data`
@@ -105,79 +81,130 @@ private void OnCollisionEnter(Collision col) => gameObject.ReturnToPool();
 int coins = SaveManager.Data.Coins;
 SaveManager.Data.Coins += 100;
 SaveManager.Save();
-SaveManager.DeleteSave();
 ```
 
 ---
 
 ## 🔊 Audio System
-
 ```csharp
-[SerializeField] private AudioClip _shootSfx;
-[SerializeField] private AudioClip _bgMusic;
-
-void Start() => AudioManager.PlayMusic(_bgMusic);
-
-void Attack()
-{
-    AudioManager.PlaySFX(_shootSfx);
-    AudioManager.PlaySFX(_shootSfx, volume: 1f, randomPitch: false);
-}
+AudioManager.PlayMusic(_bgMusic);
+AudioManager.PlaySFX(_shootSfx, volume: 1f, randomPitch: true);
 ```
 
 ---
 
-## 🛠️ Debug Console (Reflection‑Based)
+## 🎮 Input System (Static API)
+A unified API for Touch, Joystick, and Swipe controls. No instance required.
 
-- Mobile → **3‑finger tap**
-- Editor → **F1**
-- Auto‑UI for `[DebugCommand]`
-- Removed in Release builds
+**Setup:** Add `VirtualJoystick` script to your UI Image.
 
 ```csharp
-[DebugCommand("Add 1000 Gold", "Economy")]
-public static void Cheat_AddGold()
-{
-    SaveManager.Data.Coins += 1000;
-    Debug.Log("Cheat Applied!");
-}
+// Joystick
+Vector3 move = new Vector3(InputManager.JoystickInput.x, 0, InputManager.JoystickInput.y);
+
+// Events
+InputManager.OnTap += Jump;
+InputManager.OnSwipe += HandleSwipe;
 ```
 
 ---
 
-# 📦 Installation
+## 🖥️ UI System (Scene-Based)
+Type-safe, stack-based UI architecture.
 
+```csharp
+// Show
+UIManager.Show<SettingsPopup>();
+
+// Show with Data
+UIManager.Show<WinPopup>(new WinData { Score = 100 });
+
+// Hide
+UIManager.Hide<SettingsPopup>();
+```
+
+---
+
+## 📢 Game Logger (Conditional)
+Performance-oriented wrapper. All calls are **stripped** from Release Builds.
+
+```csharp
+GameLogger.Log("Standard Log");
+GameLogger.Combat("Player hit!"); // Colored: Magenta
+GameLogger.Network("Connected");  // Colored: Cyan
+GameLogger.Warning("Low Memory");
+```
+
+---
+
+## 👑 Boss Mode (Debug Console V8)
+A powerful runtime developer console.
+
+- **Access:** Triple-tap the **"DEV"** icon (Top-Right).
+- **Alerts:** Icon flashes **Yellow/Red** on warnings/errors.
+- **Usage:** Add `[BossControl]` to any field or method.
+
+```csharp
+[BossControl("Player/Speed")]
+public float MoveSpeed = 5f;
+
+[BossControl("Cheats/Kill All")]
+private void KillAll() { ... }
+
+[BossControl("Economy/Gold", true)] // Economy Tab
+public static int Gold = 100;
+```
+
+---
+
+# 🛠️ Editor Tools
+
+### 🔹 Scene Switcher Overlay
+Located in the Scene View Toolbar. Allows instant switching between scenes.
+*(Locks automatically in Play Mode).*
+
+### 🔹 Force Bootstrapper
+`Tools > M.S.T. > Enable Auto-Bootstrap`
+Forces the editor to always start from **Scene 0**, ensuring Managers are initialized even if you press Play in "Level 3".
+
+---
+
+# 🚀 Workflow: Starting & Updating
+
+This project is a **GitHub Template**.
+
+### 🆕 1. Start New Game
+1. Click **"Use this template"** on GitHub.
+2. Clone your NEW repository.
+3. Open in Unity 6.
+
+### 🔄 2. Update Core Systems
+To pull fixes from the Base Template into your game without breaking assets:
+
+**Step A (One-time):**
 ```bash
-git clone https://github.com/YourUsername/MST-Unity-Template.git MyNewGame
+git remote add template https://github.com/serhattatar/Unity-Template-Repository.git
 ```
 
-1. Open with **Unity 6 (6000.0.x)**  
-2. Load `_Project/Scenes/Bootstrap`  
-3. Validate `AppStartup` references  
-4. Enable **Development Build** for Debug Console  
+**Step B (Update):**
+```bash
+git pull template main --allow-unrelated-histories
+```
 
 ---
 
 # 🗂️ Folder Rules
 
 ```
-_Project/       → All custom assets & scripts  
-ThirdParty/     → External libraries  
-Resources/      → Avoid unless required  
-```
-
----
-
-# 🧩 Extra Utilities
-
-## Object Spawn (Fast)
-```csharp
-_bulletPrefab.Spawn(transform.position, transform.rotation);
-```
-
-## Return to Pool
-```csharp
-gameObject.ReturnToPool(2f);
+_Project/
+├── Scripts/
+│   ├── Core/       (AppStartup)
+│   ├── Managers/   (Pool, Save, Audio, Input)
+│   ├── UI/         (UIManager)
+│   └── Utilities/  (Logger, BossMode)
+├── Prefabs/
+├── Scenes/
+└── Resources/      (Avoid using)
 ```
 
 ---
