@@ -3,9 +3,6 @@ using UnityEngine.Pool;
 
 namespace Core.Pooling
 {
-    /// <summary>
-    /// Component automatically added to pooled objects to manage their own state.
-    /// </summary>
     [DisallowMultipleComponent]
     public class PoolObject : MonoBehaviour
     {
@@ -16,15 +13,25 @@ namespace Core.Pooling
             _pool = pool;
         }
 
+        public virtual void OnSpawn()
+        {
+            
+        }
+
+        public virtual void OnDespawn()
+        {
+           
+        }
+
         public void ReturnToPool()
         {
             if (_pool != null && gameObject.activeInHierarchy)
             {
+                OnDespawn(); 
                 _pool.Release(gameObject);
             }
             else
             {
-                // Fallback if the pool is missing or object is already inactive
                 Destroy(gameObject);
             }
         }

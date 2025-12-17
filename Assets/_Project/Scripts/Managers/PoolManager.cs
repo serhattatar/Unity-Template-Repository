@@ -5,7 +5,6 @@ using Core.Pooling;
 using Cysharp.Threading.Tasks;
 using Utilities;
 
-
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -26,7 +25,6 @@ public class PoolManager : MonoBehaviour
     }
 
     [Header("Pool Configuration")]
-    // Initialize list to prevent null reference if component is added via code
     [SerializeField] private List<PoolConfig> _initialPools = new List<PoolConfig>();
 
     // --- INTERNAL STATE ---
@@ -38,7 +36,7 @@ public class PoolManager : MonoBehaviour
 
     private void Awake()
     {
-        // Singleton Logic (Hidden from Public API)
+        // Service Logic (Hidden from Public API)
         if (_instance != null && _instance != this)
         {
             Destroy(gameObject);
@@ -46,12 +44,10 @@ public class PoolManager : MonoBehaviour
         }
         _instance = this;
 
-        // Setup Root container for hierarchy cleanliness
         _rootTransform = new GameObject("--- POOL SYSTEM ---").transform;
         DontDestroyOnLoad(_rootTransform);
         DontDestroyOnLoad(gameObject);
 
-        // Prewarm pools defined in Inspector
         if (_initialPools != null)
         {
             foreach (var config in _initialPools)
@@ -67,8 +63,8 @@ public class PoolManager : MonoBehaviour
     {
         if (_instance == null)
         {
-            GameLogger.Error("[PoolManager] System is not initialized! Add PoolManager to the scene.");
-            return null;
+            GameLogger.Warning("[PoolManager] System missing! Instantiating directly.");
+            return Instantiate(prefab, position, rotation, parent);
         }
         return _instance.SpawnInternal(prefab, position, rotation, parent);
     }
@@ -91,7 +87,6 @@ public class PoolManager : MonoBehaviour
     {
         if (prefab == null) return null;
 
-        // Lazy Initialization: Create pool if it doesn't exist
         if (!_pools.ContainsKey(prefab))
         {
             CreatePoolInternal(prefab, 5, 100);
@@ -118,13 +113,24 @@ public class PoolManager : MonoBehaviour
             createFunc: () =>
             {
                 var obj = Instantiate(prefab, groupObj.transform);
-                var pObj = obj.AddComponent<PoolObject>();
-                pObj.Initialize(pool); // Inject dependency
+
+                if (!obj.TryGetComponent(out PoolObject pObj))
+                {
+                    pObj = obj.AddComponent<PoolObject>();
+                }
+
+                pObj.Initialize(pool); 
                 return obj;
             },
-            actionOnGet: (obj) => obj.SetActive(true),
+            actionOnGet: (obj) =>
+            {
+                obj.SetActive(true);
+                if (obj.TryGetComponent(out PoolObject p)) p.OnSpawn();
+            },
             actionOnRelease: (obj) =>
             {
+                if (obj.TryGetComponent(out PoolObject p)) p.OnDespawn();
+
                 obj.SetActive(false);
                 if (groupObj != null) obj.transform.SetParent(groupObj.transform);
             },
@@ -147,6 +153,8 @@ public class PoolManager : MonoBehaviour
 
     private async UniTaskVoid ReturnWithDelayInternal(GameObject obj, float delay)
     {
+        if (obj == null) return;
+
         var token = obj.GetCancellationTokenOnDestroy();
         // SuppressCancellationThrow avoids exception logs if object is destroyed while waiting
         bool canceled = await UniTask.Delay((int)(delay * 1000), cancellationToken: token).SuppressCancellationThrow();
